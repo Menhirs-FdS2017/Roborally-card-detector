@@ -6,12 +6,27 @@ bool sortContours (std::vector<cv::Point>& i , std::vector<cv::Point>& j){
   return (cv::contourArea(i) > cv::contourArea(j));
 }
 
+bool sortBoxLeftRight(cv::Rect& i, cv::Rect& j){
+
+  return (i.x < j.x);
+}
+
+bool sortApprox(std::vector<cv::Point>& i, std::vector<cv::Point>& j){
+  cv::Rect recti = boundingRect(i);
+  cv::Rect rectj = boundingRect(j);
+  
+  
+  return (recti.x < rectj.x);
+    
+}
+
 /*############################################################################*/
 
 bool detectCards (std::vector<cv::Mat>& cards, cv::Mat& frame, int numberToDetect){
 
   cv::Mat mask;
   cv::Mat imageHSV;
+  std::vector<std::vector<cv::Point> > approxTab;
   
   std::vector<int> compression_params;
   compression_params.push_back(CV_IMWRITE_PNG_COMPRESSION);
@@ -53,9 +68,17 @@ bool detectCards (std::vector<cv::Mat>& cards, cv::Mat& frame, int numberToDetec
       tmp = approx[3];
       approx[3] = approx[1];
       approx[1] = tmp;
-      cards.push_back(shrinkAnImage(approx, frame, 300, 500));
+      approxTab.push_back(approx);
+      
     }
     
+  }
+  
+  std::sort(approxTab.begin(), approxTab.end(), sortApprox);
+
+  for(auto it = approxTab.begin(); it < approxTab.end(); ++it){
+
+    cards.push_back(shrinkAnImage(*it, frame, 300, 500));
   }
 
   std::cout << cards.size() << std::endl;
@@ -118,10 +141,6 @@ void isolateNumbers(std::vector<cv::Mat>& cards, std::vector<cv::Mat>& numbers){
   std::vector<cv::Rect> rightBox;
   std::vector<cv::Vec4i> hierarchy;
   std::vector<cv::Point> keyPoints;
-
-  std::vector<int> compression_params;
-  compression_params.push_back(CV_IMWRITE_PNG_COMPRESSION);
-  compression_params.push_back(9);
   
   for(auto it = cards.begin(); it < cards.end(); ++it){
     contours.clear();
@@ -151,15 +170,15 @@ void isolateNumbers(std::vector<cv::Mat>& cards, std::vector<cv::Mat>& numbers){
     }
     
     for(int i = 0; i < rightBox.size(); ++i){
-	if(rightBox[i].x <= minx)
-	  minx = rightBox[i].x - 5;
-	if(rightBox[i].y <= miny)
-	  miny = rightBox[i].y - 5;
-	if((rightBox[i].x + rightBox[i].width) >= maxx)
-	  maxx = rightBox[i].x + rightBox[i].width + 5;
-	if((rightBox[i].y + rightBox[i].height) >= maxy)
-	  maxy = rightBox[i].y + rightBox[i].height + 5;
-      }
+      if(rightBox[i].x <= minx)
+	minx = rightBox[i].x;
+      if(rightBox[i].y <= miny)
+	miny = rightBox[i].y;
+      if((rightBox[i].x + rightBox[i].width) >= maxx)
+	maxx = rightBox[i].x + rightBox[i].width;
+      if((rightBox[i].y + rightBox[i].height) >= maxy)
+	maxy = rightBox[i].y + rightBox[i].height;
+    }
 
     keyPoints.clear();
     
@@ -167,11 +186,8 @@ void isolateNumbers(std::vector<cv::Mat>& cards, std::vector<cv::Mat>& numbers){
     keyPoints.push_back(cv::Point2f(maxx, miny));
     keyPoints.push_back(cv::Point2f(maxx, maxy));
     keyPoints.push_back(cv::Point2f(minx, maxy));
-
-    int width = cv::norm(keyPoints[0] - keyPoints[1]);
-    int height = cv::norm(keyPoints[0] - keyPoints[3]);
     
-    numbers.push_back(shrinkAnImage(keyPoints, *it, width, height));
+    numbers.push_back(shrinkAnImage(keyPoints, *it, 100, 55));
   }
   
 }
@@ -228,4 +244,118 @@ void straightenCards(std::vector<cv::Mat>& cards){
     
   }
   
+}
+
+void detectNumbers(std::vector<cv::Mat>& numbers, std::vector<int>& decriptedNumbers){
+  cv::Mat imageGray;
+  cv::Mat threshold;
+  cv::Mat imageHSV;
+  cv::Mat mask;
+  std::vector<std::vector<cv::Point> > contours;
+  std::vector<cv::Vec4i> hierarchy;
+  std::vector<cv::Rect> boundingVect;
+  
+  std::vector<int> compression_params;
+  compression_params.push_back(CV_IMWRITE_PNG_COMPRESSION);
+  compression_params.push_back(9);
+  int h = 0;
+  for(auto it = numbers.begin(); it < numbers.end(); ++it){
+    boundingVect.clear();
+    cv::cvtColor(*it, imageGray, cv::COLOR_RGB2GRAY);
+    cv::adaptiveThreshold(imageGray, threshold, 255, cv::ADAPTIVE_THRESH_GAUSSIAN_C,  cv::THRESH_BINARY, 9, 0);
+    cv::morphologyEx(threshold, threshold, cv::MORPH_OPEN, cv::getStructuringElement(cv::MORPH_ELLIPSE, cv::Size(4, 4)));
+    cv::morphologyEx(threshold, threshold, cv::MORPH_CLOSE, cv::getStructuringElement(cv::MORPH_ELLIPSE, cv::Size(4, 4)));
+
+    std::string str = "../Data/threshold_" + std::to_string(h) + ".png";
+    cv::imwrite(str, threshold, compression_params);
+    
+    cv::findContours( threshold, contours, hierarchy, cv::RETR_EXTERNAL, cv::CHAIN_APPROX_SIMPLE, cv::Point(0, 0) );
+    std::sort (contours.begin(), contours.end(), sortContours);
+
+    for(int i = 0; i < contours.size(); ++i){
+      boundingVect.push_back(boundingRect(contours[i]));
+    }
+    int minx, maxx, miny, maxy, size = 0;
+    for(int i = 0; i < boundingVect.size(); ++i){
+      for(int j = i + 1; j < boundingVect.size(); ++j){
+        int smallerBoxIndex = boundingVect[i].width < boundingVect[j].width ? j:i;
+	int largerBoxIndex = smallerBoxIndex == i ? j : i;
+
+	cv::Rect smallerBox = boundingVect[smallerBoxIndex];
+	cv::Rect largerBox = boundingVect[largerBoxIndex];
+	
+	if((std::abs(boundingVect[i].x - boundingVect[j].x)) < 5){
+	  // Fusion
+	  if(boundingVect[i].x < boundingVect[j].x){
+	    minx = boundingVect[i].x;
+	  }
+	  else{
+	    minx = boundingVect[j].x;
+	  }	    
+	  if(boundingVect[i].y < boundingVect[j].y){
+	    miny = boundingVect[i].y;
+	  }
+	  else{
+	    miny = boundingVect[j].y;
+	  }
+	  if(boundingVect[i].x + boundingVect[i].width < boundingVect[j].x + boundingVect[j].width){
+	    maxx = boundingVect[j].x + boundingVect[j].width;
+	  }
+	  else{
+	    maxx = boundingVect[i].x + boundingVect[i].width;
+	  }
+	  if(boundingVect[i].y + boundingVect[i].height < boundingVect[j].y + boundingVect[j].height){
+	    maxy = boundingVect[j].y + boundingVect[j].height;
+	  }
+	  else{
+	    maxy = boundingVect[i].y + boundingVect[i].height;
+	  }
+	  
+
+	  int width = cv::norm(cv::Point(minx, miny) - cv::Point(maxx, miny));
+	  int height = cv::norm(cv::Point(minx, miny) - cv::Point(minx, maxy));
+	  boundingVect.erase(boundingVect.begin() + i);
+	  boundingVect.erase(boundingVect.begin() + (j - 1));
+	  i = -1;
+	  boundingVect.push_back(cv::Rect(minx, miny, width, height));
+	  break;
+	}
+      }
+    }
+
+    std::sort (boundingVect.begin(), boundingVect.end(), sortBoxLeftRight);
+
+    std::vector<cv::Mat> digits;
+    for(int i = 0; i < boundingVect.size(); ++i){
+      std::vector<cv::Point> keyPoints;
+      keyPoints.push_back(cv::Point(boundingVect[i].x, boundingVect[i].y));
+      keyPoints.push_back(cv::Point(boundingVect[i].x + boundingVect[i].width, boundingVect[i].y));
+      keyPoints.push_back(cv::Point(boundingVect[i].x + boundingVect[i].width, boundingVect[i].y + boundingVect[i].height));
+      keyPoints.push_back(cv::Point(boundingVect[i].x, boundingVect[i].y + boundingVect[i].height));
+      
+      digits.push_back(shrinkAnImage(keyPoints, *it, boundingVect[i].width, boundingVect[i].height));
+    }
+    
+    int number = 0;
+    for(int i = 0; i < digits.size(); ++i){
+      std::string str = "../Data/digit_" + std::to_string(h) + std::to_string(i) + ".png";;
+      cv::imwrite(str, digits[i], compression_params);
+      int value = getDigit(digits[i]);
+      //some magic stuff
+      if(i == 0 && digits.size() == 3)
+	number = number + value * 100;
+      else if((i == 0 && digits.size() == 2) || (i == 1 && digits.size() == 3))
+	number = number + value * 10;
+      else
+	number = number + value;
+    }
+
+    decriptedNumbers.push_back(number);
+    ++h;
+  }
+}
+
+int getDigit(cv::Mat& digit){
+  cv::rectangle(digit, cv::Point(0,0), cv::Point(digit.size().width, digit.size().height / 3), cv::Scalar(255,0,255));
+  return 0;
 }

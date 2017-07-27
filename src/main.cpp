@@ -37,17 +37,24 @@ int main(int argc, char ** argv){
   std::vector<cv::Mat> cards;
   std::vector<cv::Mat> numbers;
   cv::Mat frame;
+  bool bSuccess = cap.read(frame);
+
+  if (!bSuccess)
+    {
+      std::cout << "Cannot read the first frame" << std::endl;
+      return EXIT_FAILURE;
+    }
     
   do
     {
+      
       bool bSuccess = cap.read(frame);
 
-      if (!bSuccess)
-        {
-	  std::cout << "Cannot read the frame from video file" << std::endl;
-	   return EXIT_FAILURE;
+      if (!bSuccess){
+	  std::cout << "Stream interrupted" << std::endl;
+	  return EXIT_FAILURE;
         }
-
+      
       cv::imwrite("../Data/frame.png", frame, compression_params);
       cards.clear();
       
@@ -61,10 +68,18 @@ int main(int argc, char ** argv){
     std::string str = "../Data/number_" + std::to_string(i) + ".png";
     cv::imwrite(str, numbers[i], compression_params);
   }
+  
   for(int i = 0; i < cards.size(); ++i){
     std::string str = "../Data/card_" + std::to_string(i) + ".png";
     cv::imwrite(str, cards[i], compression_params);
-  }    
+  }
+  std::vector<int> decriptedNumbers;
+  detectNumbers(numbers, decriptedNumbers);
+  for(int i = 0; i < numbers.size(); ++i){
+    std::string str = "../Data/number_contours_" + std::to_string(i) + ".png";
+    cv::imwrite(str, numbers[i], compression_params);
+  }
+  
   return EXIT_SUCCESS;
   
 }

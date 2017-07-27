@@ -10,6 +10,8 @@
  * Sort the contours in revers order
  */
 bool sortContours (std::vector<cv::Point>& i , std::vector<cv::Point>& j);
+bool sortBoxLeftRight(cv::Rect& i, cv::Rect& j);
+bool sortApprox(std::vector<cv::Point>& i, std::vector<cv::Point>& j);
 
 /**
  * Detect all the card in the image and fill @cards with thoses cards
@@ -26,6 +28,10 @@ bool isRectangle(std::vector<cv::Point>& keyPoints, size_t delta = 250);
 void isolateNumbers(std::vector<cv::Mat>& cards, std::vector<cv::Mat>& numbers);
 
 void straightenCards(std::vector<cv::Mat>& cards);
+
+void detectNumbers(std::vector<cv::Mat>& numbers, std::vector<int>& decriptedNumbers);
+
+int getDigit(cv::Mat& digit);
 
 
 #endif
