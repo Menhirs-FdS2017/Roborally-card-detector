@@ -1,5 +1,11 @@
 #include "utils.hpp"
 
+int picIdDeg = 0;
+
+int compression_params_array[] = {CV_IMWRITE_PNG_COMPRESSION,9};
+std::vector<int> compression_params(compression_params_array, compression_params_array + 2);
+//compression_params.push_back(CV_IMWRITE_PNG_COMPRESSION);
+//compression_params.push_back(9);
 
 bool sortContours (std::vector<cv::Point>& i , std::vector<cv::Point>& j){
 
@@ -27,10 +33,6 @@ bool detectCards (std::vector<cv::Mat>& cards, cv::Mat& frame, int numberToDetec
   cv::Mat mask;
   cv::Mat imageHSV;
   std::vector<std::vector<cv::Point> > approxTab;
-  
-  std::vector<int> compression_params;
-  compression_params.push_back(CV_IMWRITE_PNG_COMPRESSION);
-  compression_params.push_back(9);
   
   // Convert the image in HSV
   cv::cvtColor(frame, imageHSV, cv::COLOR_BGR2HSV);
@@ -147,7 +149,7 @@ void isolateNumbers(std::vector<cv::Mat>& cards, std::vector<cv::Mat>& numbers){
     hierarchy.clear();
     cv::GaussianBlur(*it, imageHSV, cv::Size(5, 5), 0, 0);	
     cv::cvtColor(imageHSV, imageHSV, cv::COLOR_BGR2HSV);
-    cv::inRange(imageHSV, cv::Scalar(30, 60, 40), cv::Scalar(90, 255, 255), mask);
+    cv::inRange(imageHSV, cv::Scalar(30, 50, 40), cv::Scalar(90, 255, 255), mask);
     
     cv::morphologyEx(mask, mask, cv::MORPH_OPEN, cv::getStructuringElement(cv::MORPH_ELLIPSE, cv::Size(4, 4)));
     cv::morphologyEx(mask, mask, cv::MORPH_CLOSE, cv::getStructuringElement(cv::MORPH_ELLIPSE, cv::Size(10, 10)));
@@ -255,9 +257,6 @@ void detectNumbers(std::vector<cv::Mat>& numbers, std::vector<int>& decriptedNum
   std::vector<cv::Vec4i> hierarchy;
   std::vector<cv::Rect> boundingVect;
   
-  std::vector<int> compression_params;
-  compression_params.push_back(CV_IMWRITE_PNG_COMPRESSION);
-  compression_params.push_back(9);
   int h = 0;
   for(auto it = numbers.begin(); it < numbers.end(); ++it){
     boundingVect.clear();
@@ -274,6 +273,7 @@ void detectNumbers(std::vector<cv::Mat>& numbers, std::vector<int>& decriptedNum
 
     for(int i = 0; i < contours.size(); ++i){
       boundingVect.push_back(boundingRect(contours[i]));
+      //cv::rectangle(*it, boundingVect[i], cv::Scalar(255, 0, 255));
     }
     int minx, maxx, miny, maxy, size = 0;
     for(int i = 0; i < boundingVect.size(); ++i){
@@ -338,9 +338,10 @@ void detectNumbers(std::vector<cv::Mat>& numbers, std::vector<int>& decriptedNum
     
     int number = 0;
     for(int i = 0; i < digits.size(); ++i){
+      int value = getDigit(digits[i]);
+      std::cout << "(" << h << "," << i << ") : " << value << std::endl;
       std::string str = "../Data/digit_" + std::to_string(h) + std::to_string(i) + ".png";;
       cv::imwrite(str, digits[i], compression_params);
-      int value = getDigit(digits[i]);
       //some magic stuff
       if(i == 0 && digits.size() == 3)
 	number = number + value * 100;
@@ -355,7 +356,153 @@ void detectNumbers(std::vector<cv::Mat>& numbers, std::vector<int>& decriptedNum
   }
 }
 
+bool hasSegment(cv::Mat& digit, int segmentIndex)
+{
+  int width = digit.size().width;
+  int height = digit.size().height;
+  
+  int x,y;
+  switch(segmentIndex)
+    {
+    case 0:
+      x=width/2;
+      y=3;
+      break;
+    case 1:
+      x=width-4;
+      y=height/4;
+      break;
+    case 2:
+      x=width-4;
+      y=3*height/4;
+      break;
+    case 3:
+      x=width/2;
+      y=height-4;
+      break;
+    case 4:
+      x=3;
+      y=3*height/4;
+      break;
+    case 5:
+      x=3;
+      y=height/4;
+      break;
+    case 6:
+      x=width/2;
+      y=height/2;
+      break;
+    default:
+      std::cerr << "invalid segment index (" << segmentIndex << ") given." << std::endl;
+      x=-1000;
+      y=-1000;
+    }
+  
+  bool hasGreen = false;
+  for(int i=x-1; i<=x+1; ++i)
+    for(int j=y-1; j<=y+1; ++j)
+      {
+	if(digit.at<unsigned char>(cv::Point(i,j)) != 0)
+	  {
+	    hasGreen = true;
+	    //return true;
+	  }
+  }
+
+  cv::Scalar color = hasGreen ? cv::Scalar(255,0,0) : cv::Scalar(0,0,255);
+  cv::rectangle(digit,cv::Point(x-1,y-1), cv::Point(x+1,y+1), color, -1);
+  std::string str = "../Data/digit_debug_" + std::to_string(picIdDeg++) + ".png";
+  cv::imwrite(str, digit, compression_params);
+  //return false;
+  return hasGreen;
+}
+
 int getDigit(cv::Mat& digit){
-  cv::rectangle(digit, cv::Point(0,0), cv::Point(digit.size().width, digit.size().height / 3), cv::Scalar(255,0,255));
-  return 0;
+
+  //Détection des 1
+  if((digit.size().height / 3) >= digit.size().width){
+    return 1;
+  }
+  unsigned char binarySegments = 0;
+  cv::Mat rDigit, rDigitGray,  rDigitThreshold;
+  cv::resize(digit,rDigit, cv::Size(50,100));
+  cv::cvtColor(rDigit, rDigitGray, CV_BGR2GRAY);
+  //cv::adaptiveThreshold(rDigitGray, rDigitThreshold, 255, cv::ADAPTIVE_THRESH_GAUSSIAN_C,  cv::THRESH_BINARY, 19, 0);
+  cv::threshold(rDigitGray,rDigitThreshold, 60, 255, 0);
+ 
+  std::string str = "../Data/digit_threshold.png";
+  cv::imwrite(str, rDigitThreshold, compression_params);
+  /*int x = digit.size().width/2 , y = digit.size().height/2;
+
+  bool hasGreenInCenter = false;
+  
+  for(int i=x-1; i<=x+1; ++i)
+    for(int j=y-1; j<=y+1; ++j)
+      {
+	if(rDigitThreshold.at<unsigned char>(cv::Point(i,j)) != 0)
+	  hasGreenInCenter = true;
+      }
+  //*/
+  
+  if(!hasSegment(rDigitThreshold,6)) // 0 ou 7
+    {
+      if(hasSegment(rDigitThreshold,4))
+	return 0;
+      else
+	return 7;
+    }
+  else
+    {
+      if(hasSegment(rDigitThreshold,4))
+	if(hasSegment(rDigitThreshold,1))
+	  if(hasSegment(rDigitThreshold,5))
+	    return 8;
+	  else
+	    return 2;
+	else
+	  return 6;
+      else
+	if(hasSegment(rDigitThreshold,0))
+	  if(hasSegment(rDigitThreshold,5))
+	    if(hasSegment(rDigitThreshold,1))
+	      return 9;
+	    else
+	      return 5;
+	  else
+	    return 3;
+	else
+	  return 4;
+    }
+
+  /*
+  //Detections des segments allumés
+  switch(binarySegments)
+    { // trust me, this will work every time
+    case 0b11111010:
+      return 0;
+    case 0b10111110:
+      return 2;
+    case 0b00111110:
+      return 3;
+    case 0b01110100:
+      return 4;
+    case 0b01101110:
+      return 5;
+    case 0b11101110:
+      return 6;
+    case 0b00110010:
+      return 7;
+    case 0b11111110:
+      return 8;
+    case 0b01111110:
+      return 9;
+    default:
+      return -100000;
+      } //*/
+  
+  cv::rectangle(digit, cv::Point(0, 0), cv::Point(digit.size().width - 1, digit.size().height / 3), cv::Scalar(255, 0, 255));
+  cv::rectangle(digit, cv::Point(0, digit.size().height / 3), cv::Point(digit.size().width - 1, (digit.size().height / 3) * 2), cv::Scalar(255, 255, 0));
+  cv::rectangle(digit, cv::Point(0, (digit.size().height / 3) * 2), cv::Point(digit.size().width - 1, digit.size().height - 1), cv::Scalar(0, 255, 255));
+  
+  return -1000;
 }

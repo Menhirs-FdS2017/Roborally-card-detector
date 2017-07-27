@@ -32,6 +32,6 @@ void straightenCards(std::vector<cv::Mat>& cards);
 void detectNumbers(std::vector<cv::Mat>& numbers, std::vector<int>& decriptedNumbers);
 
 int getDigit(cv::Mat& digit);
-
+bool hasSegment(cv::Mat& digit, int segmentIndex, cv::Mat& digitOrig);
 
 #endif
